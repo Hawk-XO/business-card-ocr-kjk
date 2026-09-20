@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Upload Business Card</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    .preview-container {
+      width: 100%;
+      max-width: 350px;
+      height: 220px;
+      border: 1px solid #ccc;
+      border-radius: 10px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      overflow: hidden;
+      margin: 10px auto 0 auto;
+      background: #f8f9fa;
+    }
+    .preview {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: none;
+      transform-origin: center center;
+    }
+    .warning-text {
+      margin-top: 12px;
+      font-size: 0.9rem;
+      color: #b02a37;
+      font-weight: 500;
+    }
+  </style>
+</head>
+<body class="container py-4">
+
+  <h2 class="mb-3 text-center">Upload Business Card</h2>
+
+  <form id="uploadForm" action="/upload" method="post" enctype="multipart/form-data">
+    <div class="text-left mb-3">
+      <a href="{{ url_for('start_page') }}" class="btn btn-outline-secondary">⬅ Start Page</a>
+    </div>
+
+    <!-- Card type choice -->
+    <div class="mb-3">
+      <label class="form-label">Select Card Type:</label>
+      <select class="form-select" name="card_type" id="card_type" onchange="toggleCardOptions()">
+        <option value="">-- Select --</option>
+        <option value="front">Front Only</option>
+        <option value="front_back">Front + Back</option>
+      </select>
+    </div>
+
+    <!-- FRONT Upload Options -->
+    <div class="mb-3" id="front_options" style="display:none;">
+      <label class="form-label">Front Image Source:</label>
+      <select class="form-select" onchange="toggleUpload('front', this.value)">
+        <option value="">-- Select --</option>
+        <option value="camera">Camera</option>
+        <option value="gallery">Gallery</option>
+      </select>
+
+      <div id="front_upload" style="display:none;">
+        <input type="file" class="form-control mt-2" name="front_image" id="front_image" accept="image/*"
+               onchange="previewAndRotate(this, 'front_preview')">
+        <div class="preview-container">
+          <img id="front_preview" class="preview border rounded" />
+        </div>
+        <button type="button" class="btn btn-sm btn-secondary mt-2" onclick="rotateImage('front_preview', 90)">Rotate 90°</button>
+      </div>
+    </div>
+
+    <!-- BACK Upload Options -->
+    <div class="mb-3" id="back_options" style="display:none;">
+      <label class="form-label">Back Image Source:</label>
+      <select class="form-select" onchange="toggleUpload('back', this.value)">
+        <option value="">-- Select --</option>
+        <option value="camera">Camera</option>
+        <option value="gallery">Gallery</option>
+      </select>
+
+      <div id="back_upload" style="display:none;">
+        <input type="file" class="form-control mt-2" name="back_image" id="back_image" accept="image/*"
+               onchange="previewAndRotate(this, 'back_preview')">
+        <div class="preview-container">
+          <img id="back_preview" class="preview border rounded" />
+        </div>
+        <button type="button" class="btn btn-sm btn-secondary mt-2" onclick="rotateImage('back_preview', 90)">Rotate 90°</button>
+      </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary mt-3">Submit</button>
+    <p class="warning-text text-center">⚠️ Please make sure your images are oriented correctly before submitting.</p>
+  </form>
+
+  <script>
+    const rotations = {};
+
+    function toggleCardOptions() {
+      const cardType = document.getElementById("card_type").value;
+      document.getElementById("front_options").style.display = cardType ? "block" : "none";
+      document.getElementById("back_options").style.display = (cardType === "front_back") ? "block" : "none";
+    }
+
+    function toggleUpload(side, source) {
+      const uploadDiv = document.getElementById(`${side}_upload`);
+      const input = document.getElementById(`${side}_image`);
+      if (source === "camera") {
+        input.setAttribute("capture", "environment");
+        uploadDiv.style.display = "block";
+      } else if (source === "gallery") {
+        input.removeAttribute("capture");
+        uploadDiv.style.display = "block";
+      } else {
+        uploadDiv.style.display = "none";
+      }
+    }
+
+    function previewAndRotate(input, previewId) {
+      const file = input.files[0];
+      const img = document.getElementById(previewId);
+
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          img.src = e.target.result;
+          img.style.display = "block";
+          rotations[previewId] = 0;
+          img.style.transform = "rotate(0deg)";
+        };
+        reader.readAsDataURL(file);
+      } else {
+        img.style.display = "none";
+      }
+    }
+
+    function rotateImage(previewId, angle) {
+      if (!(previewId in rotations)) rotations[previewId] = 0;
+      rotations[previewId] += angle;
+      const img = document.getElementById(previewId);
+      img.style.transform = `rotate(${rotations[previewId]}deg)`;
+    }
+
+    // Replace original file with rotated one before submit
+    document.getElementById("uploadForm").addEventListener("submit", function(e) {
+      e.preventDefault(); // stop default for async file replacement
+
+      const processSide = (side) => {
+        const previewId = `${side}_preview`;
+        const inputId = `${side}_image`;
+        const img = document.getElementById(previewId);
+        const fileInput = document.getElementById(inputId);
+
+        if (fileInput && fileInput.files.length > 0 && img.style.display !== "none") {
+          return new Promise(resolve => {
+            const canvas = document.createElement("canvas");
+            const ctx = canvas.getContext("2d");
+            const tempImg = new Image();
+            tempImg.src = img.src;
+            tempImg.onload = function() {
+              let angle = rotations[previewId] || 0;
+              angle = ((angle % 360) + 360) % 360;
+
+              let w = tempImg.width;
+              let h = tempImg.height;
+
+              if (angle === 90 || angle === 270) {
+                canvas.width = h;
+                canvas.height = w;
+              } else {
+                canvas.width = w;
+                canvas.height = h;
+              }
+
+              ctx.translate(canvas.width / 2, canvas.height / 2);
+              ctx.rotate(angle * Math.PI / 180);
+              ctx.drawImage(tempImg, -w / 2, -h / 2);
+
+              canvas.toBlob(blob => {
+                const rotatedFile = new File([blob], fileInput.files[0].name, {type: "image/jpeg"});
+                const dt = new DataTransfer();
+                dt.items.add(rotatedFile);
+                fileInput.files = dt.files;
+                resolve();
+              }, "image/jpeg", 0.95);
+            };
+          });
+        }
+        return Promise.resolve();
+      };
+
+      Promise.all([processSide("front"), processSide("back")]).then(() => {
+        e.target.submit(); // submit after replacements
+      });
+    });
+  </script>
+</body>
+</html>
